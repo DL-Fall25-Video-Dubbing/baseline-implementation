@@ -33,7 +33,8 @@ class ASRComponent:
     Automatic Speech Recognition using Whisper (Baseline)
     Supports: English, French, Spanish, German, Russian
 
-    Based on DeepMind baseline approach: Use pretrained ASR per language
+    ASR is for converting spoken audio into text transcripts.
+    This will not affect baseline implementation, since it didn't specify what it used for transcription.
     """
 
     SUPPORTED_LANGUAGES = {
@@ -425,7 +426,7 @@ def extract_audio_from_video(
         raise
     except FileNotFoundError:
         print("✗ FFMPEG Error: 'ffmpeg' command not found.")
-        print("  Please ensure ffmpeg is installed and in your system's PATH.")
+        print("  Please ensure ffmpeg is installed and in the system's PATH.")
         raise
 
 

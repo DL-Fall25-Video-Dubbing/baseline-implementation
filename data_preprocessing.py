@@ -87,7 +87,7 @@ class DataPreprocessor:
         # These are *pixel* coordinates for a centered face in the output_size image
         self.canonical_template = self._create_canonical_template(output_size)
 
-        # [cite_start]Define the mouth mask region in *normalized crop coordinates* [cite: 580]
+        # Define the mouth mask region in *normalized crop coordinates*
         # (x1, y1, x2, y2) -> (left, top, right, bottom)
         self.norm_mask_rect = (0.08, 0.28, 0.92, 0.95)
 
@@ -247,9 +247,9 @@ class DataPreprocessor:
                 
             output_data['landmarks_smoothed'].append(landmarks) # Store the landmarks used
 
-            # --- 3a. [cite_start]Calculate Alignment Transform (Procrustes) --- [cite: 138]
+            # --- 3a. Calculate Alignment Transform (Procrustes) --- 
             # Use only the specified eye/nose landmarks
-            [cite_start]source_points = landmarks[ALIGNMENT_INDICES, :2].astype(np.float32) # Get x,y [cite: 203]
+            source_points = landmarks[ALIGNMENT_INDICES, :2].astype(np.float32) # Get x,y 
             target_points = self.canonical_template.astype(np.float32)
 
             transform_matrix, _ = cv2.estimateAffinePartial2D(source_points, target_points, method=cv2.LMEDS)
@@ -271,13 +271,13 @@ class DataPreprocessor:
                 frame,
                 transform_matrix,
                 (self.output_size, self.output_size),
-                [cite_start]flags=cv2.INTER_CUBIC # Paper mentions bicubic [cite: 139]
+                flags=cv2.INTER_CUBIC # Paper mentions bicubic
             )
             cropped_path = os.path.join(cropped_dir, f"frame_{i:06d}.png")
             cv2.imwrite(cropped_path, cropped_face)
             output_data['cropped_faces_paths'].append(cropped_path)
 
-            # --- 3c. [cite_start]Generate Masks --- [cite: 163, 285]
+            # --- 3c. Generate Masks 
             mask_coords_px = ( # Convert normalized rect to pixel coords
                 int(self.norm_mask_rect[0] * self.output_size),
                 int(self.norm_mask_rect[1] * self.output_size),
@@ -285,7 +285,7 @@ class DataPreprocessor:
                 int(self.norm_mask_rect[3] * self.output_size)
             )
             
-            # [cite_start]Input mask (zeros in mouth region) [cite: 165]
+            # Input mask (zeros in mouth region) 
             masked_input = cropped_face.copy()
             masked_input[mask_coords_px[1]:mask_coords_px[3], mask_coords_px[0]:mask_coords_px[2]] = 0
             masked_path = os.path.join(masked_dir, f"frame_{i:06d}.png")
@@ -301,7 +301,7 @@ class DataPreprocessor:
             cv2.imwrite(ref_mask_path, reference_mask_img)
             output_data['reference_masks_paths'].append(ref_mask_path)
             
-            # --- 3d. [cite_start]Calculate Inverse Transform (for rendering) --- [cite: 407]
+            # --- 3d. Calculate Inverse Transform (for rendering)
             inverse_transform = cv2.invertAffineTransform(transform_matrix)
             output_data['inverse_transforms'].append(inverse_transform)
 
@@ -320,7 +320,7 @@ class DataPreprocessor:
 
     def _smooth_landmarks(self, all_landmarks_raw: List[Optional[np.ndarray]]) -> List[Optional[np.ndarray]]:
         """
-        [cite_start]Smooth landmarks over time using a Gaussian filter[cite: 123].
+        Smooth landmarks over time using a Gaussian filter.
         Handles missing frames by interpolation.
         Returns smoothed 2D landmarks (x, y).
         """
