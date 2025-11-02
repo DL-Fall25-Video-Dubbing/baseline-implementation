@@ -1,5 +1,5 @@
 # ============================================================================
-# TTS COMPONENT - BASELINE IMPLEMENTATION
+# TTS COMPONENT - BASELINE IMPLEMENTATION (WaveNet-based Vocoder)
 #
 # Description:
 # Implements the TTS (Text-to-Speech) component for the
@@ -7,7 +7,11 @@
 #
 # This component follows the paper's architecture:
 # 1. An acoustic model (Tacotron 2) generates spectrograms.
-# 2. A vocoder (HiFi-GAN) synthesizes audio from spectrograms.
+# 2. A vocoder (WaveGlow) synthesizes audio from spectrograms.
+#
+# This implementation uses a WaveGlow vocoder, which is a flow-based
+# model in the same family as WaveNet, to align with the paper's
+# citation [25] (which points to a WaveNet-based vocoder).
 #
 # This class is responsible for INFERENCE. It loads a fine-tuned,
 # speaker-specific Tacotron 2 model (from Stage 2) and a generic
@@ -49,10 +53,12 @@ class TTSComponent:
     created by the paper's Stage 2 fine-tuning process.
     """
     
-    # We will use a standard, high-quality generic vocoder
-    # that is compatible with Tacotron 2. This is a common practice.
-    GENERIC_VOCODER_NAME = "vocoder_models/en/ljspeech/hifigan_v2"
-    VOCODER_SAMPLE_RATE = 22050
+    # --- MODEL UPDATE ---
+    # Changed from HiFi-GAN to a WaveNet-based (WaveGlow) vocoder
+    # to match the paper's citation [25] and your implementation plan.
+    # This model was also trained on LJSpeech and is compatible with Tacotron 2.
+    GENERIC_VOCODER_NAME = "vocoder_models/en/ljspeech/waveglow-librosa"
+    VOCODER_SAMPLE_RATE = 22050  # This model also uses 22050Hz
 
     def __init__(
         self,
@@ -92,7 +98,7 @@ class TTSComponent:
         This is done once and shared by all speaker models.
         """
         if self.vocoder is None:
-            print(f"Loading generic vocoder: {self.GENERIC_VOCODER_NAME}...")
+            print(f"Loading generic WaveNet-based vocoder: {self.GENERIC_VOCODER_NAME}...")
             # We load the vocoder by loading a full TTS model
             # and then just grabbing its vocoder component.
             try:
@@ -100,10 +106,10 @@ class TTSComponent:
                 
                 # We only need the vocoder model, not the full TTS class
                 self.vocoder = tts_instance_for_vocoder.vocoder.model
-                self.vocoder.remove_pre_net() # Prepare for stand-alone use
+                self.vocoder.remove_pre_net()  # Prepare for stand-alone use
                 self.vocoder.eval()
                 
-                print(f"✓ Generic vocoder loaded to {self.device}")
+                print(f"✓ Generic WaveNet-based vocoder loaded to {self.device}")
             except Exception as e:
                 print(f"✗ Error loading generic vocoder: {e}")
                 print("  Please ensure you have an internet connection to download the model.")
@@ -203,7 +209,7 @@ class TTSComponent:
             if spectrogram.dim() == 2:
                 spectrogram = spectrogram.unsqueeze(0)
 
-            # 2. Synthesize Audio (Vocoder)
+            # 2. Synthesize Audio (Vocoder - WaveGlow)
             # Use the generic vocoder's `inference` method
             with torch.no_grad():
                 wav = self.vocoder.inference(spectrogram)
@@ -248,7 +254,7 @@ class TTSComponent:
         print(f"Batch synthesizing {len(segments)} segments for speaker...")
         print(f"  Speaker Model: {speaker_model_dir}")
         print(f"  Output Directory: {output_dir}")
-        print(f"{'='*60}")
+        print(f"{'='*66}")
         
         os.makedirs(output_dir, exist_ok=True)
         
