@@ -217,8 +217,4 @@ __marimo__/
 .streamlit/secrets.toml
 
 # markdown cells
-progress.md
-cells.md
-convert_notebook_to_pdf.py
 components-used.md
-ask/
