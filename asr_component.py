@@ -1,17 +1,24 @@
 # ============================================================================
 # ASR COMPONENT - BASELINE IMPLEMENTATION
 #
+# Project: Large-scale Multilingual Audio-Visual Dubbing (Baseline)
 #
 # Description:
-# Implements the ASR (Automatic Speech Recognition) component for the
-# "Large-scale multilingual audio visual dubbing" baseline project.
+# Implements the ASR (Automatic Speech Recognition) component using
+# OpenAI's Whisper Medium model (pre-trained, no fine-tuning).
 #
-# This component uses OpenAI's Whisper model as a robust, multilingual
-# ASR system, as discussed in the project plan.
+# Purpose:
+# - Extract audio from input video
+# - Detect source language automatically
+# - Transcribe spoken content with timestamps
+# - Support 5 languages: English, Spanish, French, German, Russian
+#
+# Input:  Video file (any format supported by ffmpeg)
+# Output: Transcription with word-level timestamps
 #
 # Dependencies:
 # pip install openai-whisper torch numpy
-# (And ffmpeg)
+# ffmpeg (system installation)
 # ============================================================================
 
 import os
@@ -30,11 +37,18 @@ import numpy as np
 
 class ASRComponent:
     """
-    Automatic Speech Recognition using Whisper (Baseline)
-    Supports: English, French, Spanish, German, Russian
-
-    ASR is for converting spoken audio into text transcripts.
-    This will not affect baseline implementation, since it didn't specify what it used for transcription.
+    Automatic Speech Recognition using Whisper Medium (Pre-trained)
+    
+    Purpose: First stage of video dubbing pipeline
+    - Extracts and transcribes audio from input video
+    - Detects source language automatically  
+    - Provides timestamped transcription for downstream processing
+    
+    Supported Languages (Baseline): en, es, fr, de, ru
+    Model: OpenAI Whisper Medium (no training, fully pre-trained)
+    
+    Pipeline Role:
+    Video → [ASR] → Transcription → MT → TTS → Lipsync → Dubbed Video
     """
 
     SUPPORTED_LANGUAGES = {
@@ -93,22 +107,26 @@ class ASRComponent:
         verbose: bool = False
     ) -> Dict:
         """
-        Transcribe audio file to text with timestamps
+        [CORE METHOD] Transcribe audio/video to text with timestamps
+        
+        This is the main ASR method for the dubbing pipeline.
+        Used to extract source language text from input video.
 
         Args:
-            audio_path: Path to audio/video file
-            language: Language code ('en', 'fr', 'es', 'de', 'ru')
-                      If None, auto-detect
-            task: 'transcribe' or 'translate' (to English)
-            return_timestamps: Include word-level timestamps
-            verbose: Print progress
+            audio_path: Path to audio or video file
+            language: Language code ('en', 'es', 'fr', 'de', 'ru')
+                      If None, auto-detect source language
+            task: 'transcribe' (keep same language, default for pipeline)
+            return_timestamps: Always True for lipsync alignment
+            verbose: Print detailed progress
 
         Returns:
             Dictionary with:
-                - text: Full transcription
-                - segments: List of segments with timestamps
-                - language: Detected/specified language
-                - duration: Audio duration in seconds
+                - text: Full transcription text
+                - segments: List of timestamped segments (for alignment)
+                - language: Detected/specified language code
+                - duration: Total audio duration in seconds
+                - num_segments: Number of segments
         """
         # Validate language
         if language and language not in self.SUPPORTED_LANGUAGES:
@@ -157,15 +175,7 @@ class ASRComponent:
         return transcription
 
     def _format_segments(self, segments: List[Dict]) -> List[Dict]:
-        """
-        Format segments for consistent output
-
-        Args:
-            segments: Raw segments from Whisper
-
-        Returns:
-            Formatted segments with start, end, text
-        """
+        """Format segments for consistent output"""
         formatted = []
         for seg in segments:
             start = round(seg['start'], 2)
@@ -179,116 +189,22 @@ class ASRComponent:
             })
         return formatted
 
-    def transcribe_with_speaker_diarization(
-        self,
-        audio_path: str,
-        language: str = None
-    ) -> Dict:
-        """
-        Transcribe with simple speaker diarization
-        (For videos with single speaker - baseline approach)
-
-        Args:
-            audio_path: Path to audio file
-            language: Language code
-
-        Returns:
-            Transcription with speaker info
-        """
-        result = self.transcribe(audio_path, language=language)
-
-        # Baseline: Assume single speaker
-        # (DeepMind paper mentions "single speaker videos")
-        for segment in result['segments']:
-            segment['speaker'] = 'SPEAKER_01'
-
-        return result
-
-    def batch_transcribe(
-        self,
-        audio_paths: List[str],
-        language: str = None,
-        save_dir: Optional[str] = None
-    ) -> List[Dict]:
-        """
-        Batch transcribe multiple files
-
-        Args:
-            audio_paths: List of audio file paths
-            language: Language code (same for all)
-            save_dir: Directory to save transcriptions (optional)
-
-        Returns:
-            List of transcription results
-        """
-        results = []
-
-        for i, audio_path in enumerate(audio_paths, 1):
-            print(f"\n[{i}/{len(audio_paths)}] Processing: {Path(audio_path).name}")
-
-            try:
-                result = self.transcribe(audio_path, language=language)
-                results.append({
-                    'file': audio_path,
-                    'success': True,
-                    'transcription': result
-                })
-
-                # Save individual result
-                if save_dir:
-                    self._save_transcription(result, audio_path, save_dir)
-
-            except Exception as e:
-                print(f"✗ Error: {str(e)}")
-                results.append({
-                    'file': audio_path,
-                    'success': False,
-                    'error': str(e)
-                })
-
-        # Summary
-        successful = sum(1 for r in results if r['success'])
-        print(f"\n{'='*60}")
-        print(f"Batch complete: {successful}/{len(audio_paths)} successful")
-        print(f"{'='*60}")
-
-        return results
-
-    def _save_transcription(
-        self,
-        transcription: Dict,
-        audio_path: str,
-        save_dir: str
-    ):
-        """Save transcription to JSON file"""
-        os.makedirs(save_dir, exist_ok=True)
-
-        filename = Path(audio_path).stem + '_transcript.json'
-        save_path = os.path.join(save_dir, filename)
-
-        with open(save_path, 'w', encoding='utf-8') as f:
-            json.dump(transcription, f, ensure_ascii=False, indent=2)
-
-        print(f"  Saved: {save_path}")
-
     def detect_language(self, audio_path: str) -> Tuple[str, float]:
         """
-        Detect language of audio file
+        [CORE METHOD] Detect language of audio/video file
+        
+        Used to identify source language before transcription.
 
         Args:
-            audio_path: Path to audio file
+            audio_path: Path to audio or video file
 
         Returns:
-            (language_code, confidence)
+            (language_code, confidence): e.g., ('en', 0.99)
         """
-        # Load audio
         audio = whisper.load_audio(audio_path)
         audio = whisper.pad_or_trim(audio)
-
-        # Make log-Mel spectrogram
         mel = whisper.log_mel_spectrogram(audio).to(self.device)
-
-        # Detect language
+        
         _, probs = self.model.detect_language(mel)
         detected_lang = max(probs, key=probs.get)
         confidence = probs[detected_lang]
@@ -297,75 +213,6 @@ class ASRComponent:
         print(f"  Detected: {detected_lang} ({confidence:.2%})")
 
         return detected_lang, confidence
-
-    def extract_utterances(
-        self,
-        transcription: Dict,
-        max_duration: float = 12.0,
-        min_duration: float = 1.0
-    ) -> List[Dict]:
-        """
-        Split transcription into utterances (for baseline training)
-        This mimics the paper's data processing pipeline, where long
-        tracks are split into smaller chunks.
-
-        Args:
-            transcription: Result from transcribe()
-            max_duration: Maximum utterance duration (seconds)
-            min_duration: Minimum utterance duration (seconds)
-
-        Returns:
-            List of utterances with start, end, text
-        """
-        utterances = []
-        current_utterance = {
-            'start': 0.0,
-            'end': 0.0,
-            'text': ''
-        }
-
-        for segment in transcription['segments']:
-            segment_duration = segment['duration']
-            text = segment['text']
-
-            # Start new utterance if current is empty
-            if not current_utterance['text']:
-                current_utterance['start'] = segment['start']
-                current_utterance['end'] = segment['end']
-                current_utterance['text'] = text
-                continue
-
-            # Check if adding this segment exceeds max duration
-            potential_duration = segment['end'] - current_utterance['start']
-
-            if potential_duration > max_duration:
-                # Finalize current utterance if it's valid
-                if current_utterance['end'] - current_utterance['start'] >= min_duration:
-                    current_utterance['text'] = current_utterance['text'].strip()
-                    utterances.append(current_utterance.copy())
-
-                # Start new utterance
-                current_utterance = {
-                    'start': segment['start'],
-                    'end': segment['end'],
-                    'text': text
-                }
-            else:
-                # Add to current utterance
-                current_utterance['end'] = segment['end']
-                current_utterance['text'] += ' ' + text
-
-        # Add final utterance
-        if current_utterance['text'] and \
-           current_utterance['end'] - current_utterance['start'] >= min_duration:
-            current_utterance['text'] = current_utterance['text'].strip()
-            utterances.append(current_utterance)
-
-        print(f"\nExtracted {len(utterances)} utterances")
-        if utterances:
-            print(f"  Avg duration: {np.mean([u['end']-u['start'] for u in utterances]):.2f}s")
-
-        return utterances
 
     def get_model_info(self) -> Dict:
         """Get information about loaded model"""
@@ -387,24 +234,24 @@ def extract_audio_from_video(
     sample_rate: int = 16000
 ) -> str:
     """
-    Extract audio from video file using ffmpeg.
+    [CORE UTILITY] Extract audio from video using ffmpeg
+    
+    Essential for video dubbing pipeline.
 
     Args:
-        video_path: Path to video file
+        video_path: Path to input video file
         output_path: Output audio path (auto-generated if None)
-        sample_rate: Audio sample rate (Whisper requires 16000)
+        sample_rate: Audio sample rate (16000 Hz for Whisper)
 
     Returns:
-        Path to extracted audio file
+        Path to extracted audio file (.wav format)
     """
     if not os.path.exists(video_path):
         raise FileNotFoundError(f"Video file not found: {video_path}")
 
     if output_path is None:
-        # Save audio in a predictable way, e.g., 'video_name.wav'
         output_path = str(Path(video_path).with_suffix('.wav'))
 
-    # Use ffmpeg to extract audio
     cmd = [
         'ffmpeg', '-i', video_path,
         '-vn',  # No video
@@ -416,7 +263,6 @@ def extract_audio_from_video(
     ]
 
     try:
-        # Using DEVNULL for stdout, but capturing stderr for errors
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         print(f"✓ Audio extracted: {output_path}")
         return output_path
@@ -430,67 +276,9 @@ def extract_audio_from_video(
         raise
 
 
-def format_timestamp(seconds: float, use_comma: bool = True) -> str:
-    """
-    Format seconds to HH:MM:SS,mmm (SRT format) or HH:MM:SS.mmm
-
-    Args:
-        seconds: Time in seconds
-        use_comma: True for SRT format (HH:MM:SS,mmm), False (HH:MM:SS.mmm)
-
-    Returns:
-        Formatted timestamp string
-    """
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = seconds % 60
-    
-    delimiter = ',' if use_comma else '.'
-    
-    return f"{hours:02d}:{minutes:02d}:{secs:06.3f}".replace('.', delimiter)
-
-
-def export_to_srt(transcription: Dict, output_path: str):
-    """
-    Export transcription to SRT subtitle format
-
-    Args:
-        transcription: Result from ASRComponent.transcribe()
-        output_path: Path to save SRT file
-    """
-    with open(output_path, 'w', encoding='utf-8') as f:
-        for i, segment in enumerate(transcription['segments'], 1):
-            # Subtitle index
-            f.write(f"{i}\n")
-
-            # Timestamps
-            start = format_timestamp(segment['start'], use_comma=True)
-            end = format_timestamp(segment['end'], use_comma=True)
-            f.write(f"{start} --> {end}\n")
-
-            # Text
-            f.write(f"{segment['text'].strip()}\n\n")
-
-    print(f"✓ SRT exported: {output_path}")
-
-
-def export_to_json(transcription: Dict, output_path: str):
-    """
-    Export transcription to JSON format
-
-    Args:
-        transcription: Result from ASRComponent.transcribe()
-        output_path: Path to save JSON file
-    """
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(transcription, f, ensure_ascii=False, indent=2)
-
-    print(f"✓ JSON exported: {output_path}")
-
-
 def print_transcription(transcription: Dict, max_segments: int = 10):
     """
-    Pretty print transcription
+    Pretty print transcription results
 
     Args:
         transcription: Result from ASRComponent.transcribe()
@@ -511,10 +299,38 @@ def print_transcription(transcription: Dict, max_segments: int = 10):
     print(f"{'='*60}")
 
     for i, seg in enumerate(transcription['segments'][:max_segments], 1):
-        timestamp = f"[{format_timestamp(seg['start'], use_comma=False)} --> {format_timestamp(seg['end'], use_comma=False)}]"
-        print(f"{i:02d}. {timestamp}")
-        print(f"   {seg['text']}")
-        print() # Add a newline for readability
+        start = f"{seg['start']:.2f}s"
+        end = f"{seg['end']:.2f}s"
+        print(f"{i:02d}. [{start} --> {end}]")
+        print(f"    {seg['text']}")
 
     if transcription['num_segments'] > max_segments:
-        print(f"... ({transcription['num_segments'] - max_segments} more segments)")
+        print(f"\n... ({transcription['num_segments'] - max_segments} more segments)")
+
+
+def export_to_srt(transcription: Dict, output_path: str):
+    """
+    Export transcription to SRT subtitle format
+    
+    Useful for visualization and debugging.
+
+    Args:
+        transcription: Result from ASRComponent.transcribe()
+        output_path: Path to save SRT file
+    """
+    def format_timestamp(seconds: float) -> str:
+        """Format seconds to SRT format (HH:MM:SS,mmm)"""
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{secs:06.3f}".replace('.', ',')
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        for i, segment in enumerate(transcription['segments'], 1):
+            f.write(f"{i}\n")
+            start = format_timestamp(segment['start'])
+            end = format_timestamp(segment['end'])
+            f.write(f"{start} --> {end}\n")
+            f.write(f"{segment['text'].strip()}\n\n")
+
+    print(f"✓ SRT exported: {output_path}")
